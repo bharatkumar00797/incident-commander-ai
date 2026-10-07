@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "incident-commander-ai"
+version = "0.1.0"
+description = "AI production incident commander: triages alerts, correlates signals, tests root-cause hypotheses and proposes approval-gated remediation."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Bharatkumar Chandvani" }]
+requires-python = ">=3.11"
+keywords = ["ai", "llm", "ai-agents", "incident-response", "sre", "aiops", "root-cause-analysis"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: System :: Monitoring",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "pydantic>=2.6",
+  "httpx>=0.27",
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
+
+[project.scripts]
+incident-commander = "incident_commander.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/incident_commander"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/incident_commander"]
