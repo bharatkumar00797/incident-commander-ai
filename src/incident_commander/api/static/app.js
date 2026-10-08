@@ -482,7 +482,8 @@ async function loadPostmortem() {
 
 // Minimal Markdown renderer for the postmortem: headings, quotes, lists, task items, tables,
 // paragraphs, **bold** and `code`. It builds DOM nodes, so no markup in the source is executed.
-function inline(text) {
+function inline(raw) {
+  const text = raw.replace(/\\\|/g, "|"); // table-safe escaped pipes outside tables
   const out = [];
   const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
   let last = 0;
