@@ -4,7 +4,8 @@ Heuristics an experienced on-call engineer applies first:
 
 * a deploy or config change shortly before the first symptom on the same service (or on a
   service it serves) is the prime suspect;
-* "too many connections" / "pool exhausted" / OOM text points at resource exhaustion;
+* "too many connections" / "pool exhausted" / OOM text points at resource exhaustion (memory
+  or connections, which picks the saturation metric to check);
 * timeouts on several services that share a dependency point at that dependency;
 * a request-rate surge points at a traffic spike.
 """
@@ -24,10 +25,11 @@ CHANGE_LOOKBACK = timedelta(minutes=60)
 SUSPECT_GAP = timedelta(minutes=30)
 
 _EXHAUSTION_RE = re.compile(
-    r"too many connections|pool exhausted|connection pool|out of memory|\boom\b|"
+    r"too many connections|pool exhausted|connection pool|out of memory|\boom\b|oomkilled|"
     r"no space left|max_connections|resource exhausted",
     re.IGNORECASE,
 )
+_MEMORY_RE = re.compile(r"out of memory|\boom\b|oomkilled|heap|memory", re.IGNORECASE)
 _DEPENDENCY_RE = re.compile(
     r"timed? ?out|timeout|connection refused|unavailable|upstream|503 from|deadline exceeded",
     re.IGNORECASE,
@@ -121,6 +123,8 @@ def correlate(signals: Sequence[Signal], topology: Topology | None = None) -> Co
 
     for symptom in symptoms:
         if _EXHAUSTION_RE.search(symptom.summary):
+            # which resource ran out decides which saturation metric the agent checks first
+            metric = "memory_usage" if _MEMORY_RE.search(symptom.summary) else "db_connections"
             add(
                 CandidateCause(
                     cause="resource_exhaustion",
@@ -128,6 +132,7 @@ def correlate(signals: Sequence[Signal], topology: Topology | None = None) -> Co
                     score=0.75,
                     rationale=f"exhaustion pattern on {symptom.service}: {symptom.summary}",
                     refs=[symptom.id],
+                    details={"metric": metric},
                 )
             )
 
