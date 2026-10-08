@@ -5,7 +5,7 @@
 
 **An AI agent that runs production incidents from the first alert to the postmortem.**
 
-> Status: core engine and CLI are working end to end; the HTTP API, dashboard and deploy configs are in progress.
+> Status: engine, CLI, HTTP API and web dashboard are working end to end; deploy configs are in progress.
 
 ## What it does
 
@@ -48,6 +48,51 @@ export IC_BASE_URL=https://api.groq.com/openai/v1   # or http://localhost:11434/
 export IC_MODEL=llama-3.1-8b-instant
 export IC_API_KEY=...                # never committed; read from the environment only
 ```
+
+## API and dashboard
+
+```bash
+incident-commander serve                 # http://127.0.0.1:8000 (honours $PORT and $HOST)
+incident-commander serve --dev           # local development: no API key needed
+```
+
+Open `http://127.0.0.1:8000/` for the dashboard (pick a scenario, watch the live timeline, review
+hypotheses, approve or reject the proposed runbook, read the postmortem) or `/docs` for the
+OpenAPI reference.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/incidents` | open an incident from `{"scenario": "bad-deploy"}` or a raw `{"signals": [...], "topology": {...}}` batch |
+| `GET` | `/api/incidents` | incidents visible to the caller |
+| `GET` | `/api/incidents/{id}` | severity, status, hypotheses, proposals |
+| `GET` | `/api/incidents/{id}/timeline?since=N` | timeline entries after cursor `N` (polling) |
+| `POST` | `/api/incidents/{id}/actions/{action_id}/approve` | approve and run the runbook (simulated) |
+| `POST` | `/api/incidents/{id}/actions/{action_id}/reject` | reject with an optional reason |
+| `GET` | `/api/incidents/{id}/postmortem` | blameless postmortem as Markdown |
+| `GET` | `/api/scenarios`, `/api/config`, `/healthz` | metadata and health |
+
+```bash
+curl -s -X POST localhost:8000/api/incidents -H 'Content-Type: application/json' \
+  -d '{"scenario": "bad-deploy"}'
+curl -s "localhost:8000/api/incidents/<id>/timeline?since=0"
+curl -s -X POST localhost:8000/api/incidents/<id>/actions/<action_id>/approve \
+  -H 'Content-Type: application/json' -d '{"approver": "on-call"}'
+```
+
+Access modes:
+
+- **Public demo** (default, no keys): packaged scenarios and the offline mock provider only.
+  Approvals are allowed because every runbook runs against the simulated environment, and the
+  API and dashboard label it as simulated.
+- **API keys**: `IC_API_KEYS` (responder: open and follow own incidents) and `IC_APPROVER_KEYS`
+  (approver: see all incidents, approve or reject). Send `X-API-Key: <key>` or
+  `Authorization: Bearer <key>`.
+- **Dev mode**: `IC_DEV_MODE=true` or `--dev`, no authentication; for localhost only.
+
+Investigations run in a bounded background worker pool (`POST` answers `202`, poll the timeline);
+with `IC_SYNC_RUNS=true` (automatic on Vercel / AWS Lambda) they finish inside the request
+(`200` with the full timeline). Rate limits, a 256 KB body cap, strict CSP and the other settings
+are listed in `.env.example`.
 
 ## Development
 
