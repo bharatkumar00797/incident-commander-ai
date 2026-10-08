@@ -336,8 +336,8 @@ def create_app(
                 http.HTTP_503_SERVICE_UNAVAILABLE, str(exc), headers={"Retry-After": "10"}
             ) from exc
         detail = _detail(record).model_dump()
-        if not record.done:
-            return IncidentCreatedOut(**detail)
+        if not manager.inline:
+            return IncidentCreatedOut(**detail)  # 202: poll the timeline endpoint
         response.status_code = http.HTTP_200_OK
         snap = record.view()
         return IncidentCreatedOut(**detail, timeline=list(snap.timeline) if snap else [])
