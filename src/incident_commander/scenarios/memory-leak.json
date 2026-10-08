@@ -1,0 +1,200 @@
+{
+  "name": "memory-leak",
+  "title": "Search restarting in a loop: memory leak ends in OOM kills",
+  "description": "search-api leaks memory in its query-result cache; pods grow for hours until the kernel OOM-kills them and search slows down for shoppers. A log-level config change minutes before the first kill is a red herring the investigation has to rule out.",
+  "topology": {
+    "services": {
+      "storefront-web": {
+        "depends_on": [
+          "search-api"
+        ],
+        "customer_facing": true,
+        "owner": "team-web",
+        "description": "Customer storefront"
+      },
+      "search-api": {
+        "depends_on": [
+          "search-index"
+        ],
+        "owner": "team-search",
+        "description": "Product search and autocomplete"
+      },
+      "search-index": {
+        "owner": "team-search",
+        "description": "Search index cluster"
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "config",
+      "service": "search-api",
+      "key": "search-api.log_level",
+      "old": "info",
+      "new": "debug",
+      "timestamp": "2026-10-08T15:52:00Z",
+      "by": "ops-console"
+    },
+    {
+      "type": "log",
+      "line": "2026-10-08T15:55:00Z ERROR search-api: container search-api-7f9c OOMKilled (memory limit 2048Mi), restarting"
+    },
+    {
+      "version": "4",
+      "status": "firing",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "SearchApiRestarting",
+            "service": "search-api",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "4 pod restarts in 30 minutes"
+          },
+          "startsAt": "2026-10-08T15:57:00Z"
+        }
+      ]
+    },
+    {
+      "type": "metric",
+      "service": "search-api",
+      "name": "memory_usage",
+      "value": 2010,
+      "baseline": 900,
+      "threshold": 2048,
+      "unit": "MiB",
+      "timestamp": "2026-10-08T15:58:00Z"
+    },
+    {
+      "type": "log",
+      "line": "2026-10-08T15:59:30Z ERROR search-api: container search-api-2b1d OOMKilled (memory limit 2048Mi), restarting"
+    },
+    {
+      "event_action": "trigger",
+      "payload": {
+        "summary": "Search results slow on storefront (p95 3.9s)",
+        "source": "slo-monitor",
+        "component": "storefront-web",
+        "severity": "error",
+        "timestamp": "2026-10-08T16:01:00Z"
+      }
+    }
+  ],
+  "environment": {
+    "now": "2026-10-08T16:15:00Z",
+    "logs": {
+      "search-api": [
+        "2026-10-08T15:20:00Z WARN search-api: GC pause 1.8s, heap usage 88% after full collection",
+        "2026-10-08T15:41:00Z WARN search-api: GC pause 2.6s, heap usage 94% after full collection; result cache holds 1.9M entries",
+        "2026-10-08T15:52:10Z INFO search-api: log level changed to debug",
+        "2026-10-08T15:55:00Z ERROR search-api: container search-api-7f9c OOMKilled (memory limit 2048Mi), restarting",
+        "2026-10-08T15:59:30Z ERROR search-api: container search-api-2b1d OOMKilled (memory limit 2048Mi), restarting",
+        "2026-10-08T16:06:00Z WARN search-api: heap usage 91% on search-api-7f9c 11 minutes after restart"
+      ]
+    },
+    "metrics": {
+      "search-api": {
+        "memory_usage": {
+          "unit": "MiB",
+          "baseline": 900,
+          "start": "2026-10-08T13:00:00Z",
+          "interval_minutes": 15,
+          "points": [
+            900,
+            980,
+            1060,
+            1150,
+            1240,
+            1330,
+            1420,
+            1510,
+            1600,
+            1700,
+            1810,
+            1920,
+            2048,
+            1990
+          ],
+          "limit": 2048
+        },
+        "error_rate": {
+          "unit": "ratio",
+          "baseline": 0.01,
+          "start": "2026-10-08T13:00:00Z",
+          "interval_minutes": 15,
+          "points": [
+            0.01,
+            0.01,
+            0.011,
+            0.01,
+            0.011,
+            0.01,
+            0.012,
+            0.011,
+            0.012,
+            0.013,
+            0.014,
+            0.016,
+            0.017,
+            0.016
+          ]
+        },
+        "latency_p95_ms": {
+          "unit": "ms",
+          "baseline": 400,
+          "start": "2026-10-08T13:00:00Z",
+          "interval_minutes": 15,
+          "points": [
+            400,
+            410,
+            420,
+            450,
+            480,
+            520,
+            600,
+            700,
+            900,
+            1300,
+            2100,
+            3200,
+            3900,
+            3700
+          ]
+        }
+      }
+    },
+    "deploys": {
+      "search-api": [
+        {
+          "version": "v4.8.0",
+          "previous_version": "v4.7.2",
+          "at": "2026-10-05T10:30:00Z",
+          "by": "ci-pipeline",
+          "summary": "Cache autocomplete results per query"
+        }
+      ]
+    },
+    "config_changes": {
+      "search-api": [
+        {
+          "key": "search-api.log_level",
+          "old": "info",
+          "new": "debug",
+          "at": "2026-10-08T15:52:00Z",
+          "by": "ops-console"
+        }
+      ]
+    },
+    "replicas": {
+      "search-api": 3,
+      "storefront-web": 6
+    }
+  },
+  "expected": {
+    "cause": "resource_exhaustion",
+    "service": "search-api",
+    "runbook_id": "restart_service"
+  }
+}
