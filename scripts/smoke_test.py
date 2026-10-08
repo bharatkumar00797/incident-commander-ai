@@ -4,8 +4,9 @@
 Usage: python3 scripts/smoke_test.py [BASE_URL] [--api-key KEY]
 
 For every packaged scenario: open an incident, wait for the investigation (works with background
-and sync mode), approve the proposed runbook, and check the incident resolves and the postmortem
-renders. Exits non-zero on the first failure.
+and sync mode), check the agent proposed the right runbook, approve it, and check the incident
+resolves and the postmortem renders. Every scenario listed in EXPECTED_RUNBOOKS must be served.
+Exits non-zero on the first failure.
 """
 
 from __future__ import annotations
@@ -17,6 +18,16 @@ import time
 import urllib.error
 import urllib.request
 from typing import Any
+
+# The runbook a correct investigation proposes for each packaged scenario.
+EXPECTED_RUNBOOKS = {
+    "bad-config-push": "toggle_feature_flag",
+    "bad-deploy": "rollback_deploy",
+    "db-connection-exhaustion": "restart_service",
+    "dependency-outage": "failover_dependency",
+    "memory-leak": "restart_service",
+    "traffic-spike": "scale_out",
+}
 
 
 class Client:
@@ -64,6 +75,11 @@ def run_scenario(client: Client, name: str) -> None:
     pending = [p for p in detail["proposals"] if p["status"] == "proposed"]
     check(len(pending) == 1, f"{name}: expected one pending proposal")
     action = pending[0]
+    expected = EXPECTED_RUNBOOKS.get(name)
+    check(
+        expected in (None, action["runbook_id"]),
+        f"{name}: proposed {action['runbook_id']}, expected {expected}",
+    )
     _, decision, _ = client.request(
         "POST",
         f"/api/incidents/{iid}/actions/{action['id']}/approve",
@@ -97,9 +113,11 @@ def main() -> int:
     check("default-src 'self'" in headers.get("content-security-policy", ""), "CSP header")
     _, config, _ = client.request("GET", "/api/config")
     print(f"PASS health + dashboard: v{health['version']}, mode {config['access_mode']}")
+    missing = sorted(set(EXPECTED_RUNBOOKS) - set(config["scenarios"]))
+    check(not missing, f"scenarios not served: {missing}")
     for name in config["scenarios"]:
         run_scenario(client, name)
-    print("ALL PASS")
+    print(f"ALL PASS ({len(config['scenarios'])} scenarios)")
     return 0
 
 
