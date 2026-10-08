@@ -1,0 +1,22 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Deploys the Docker image as a public demo: packaged scenarios, offline mock provider and
+# runbooks that only ever run against the simulated environment. To lock it down or use a real
+# LLM, add IC_API_KEYS / IC_APPROVER_KEYS (and IC_PROVIDER, IC_API_KEY, ...) as secret
+# environment variables in the Render dashboard.
+services:
+  - type: web
+    name: incident-commander-ai
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: IC_PROVIDER
+        value: mock
+      # Render's proxy appends the real client IP to X-Forwarded-For (per-client rate limits)
+      - key: IC_TRUST_PROXY
+        value: "true"
+      - key: IC_MAX_CONCURRENT_RUNS
+        value: "1"
