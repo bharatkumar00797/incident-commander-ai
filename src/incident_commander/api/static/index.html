@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incident Commander</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">IC</span>
+      <div>
+        <h1>Incident Commander</h1>
+        <p class="tagline">AI triage, root-cause analysis and approval-gated remediation</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="mode-badge" class="pill">loading…</span>
+      <span id="version" class="muted small"></span>
+      <a class="small" href="/docs" target="_blank" rel="noopener">API docs</a>
+    </div>
+  </header>
+  <div id="sim-banner" class="banner">
+    Simulated environment: diagnostics read synthetic telemetry and approved runbooks only change
+    the simulator. No real infrastructure is touched.
+  </div>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card">
+        <h2>Start an incident</h2>
+        <form id="start-form">
+          <label for="scenario">Scenario</label>
+          <select id="scenario" required></select>
+          <p id="scenario-desc" class="muted small"></p>
+          <label for="provider">Provider</label>
+          <select id="provider"></select>
+          <div id="key-row" hidden>
+            <label for="api-key">API key</label>
+            <input id="api-key" type="password" autocomplete="off" placeholder="X-API-Key">
+            <p class="muted small">Kept in this browser tab only (sessionStorage).</p>
+          </div>
+          <button id="start-btn" type="submit" class="primary">Declare incident</button>
+          <p id="start-error" class="error small" role="alert"></p>
+        </form>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2>Incidents</h2>
+          <button id="refresh-btn" type="button" class="ghost small">Refresh</button>
+        </div>
+        <ul id="incident-list" class="incident-list"></ul>
+        <p id="list-empty" class="muted small">No incidents yet. Pick a scenario above.</p>
+      </section>
+    </aside>
+
+    <section class="content">
+      <div id="empty-state" class="card empty">
+        <h2>No incident selected</h2>
+        <p class="muted">Declare an incident from a scenario to watch the agent triage the signals,
+          test hypotheses with read-only diagnostics and propose a runbook for your approval.</p>
+      </div>
+
+      <div id="incident-view" hidden>
+        <div class="card incident-head">
+          <div class="incident-title-row">
+            <span id="inc-sev" class="sev"></span>
+            <h2 id="inc-title"></h2>
+          </div>
+          <div class="meta-row">
+            <span id="inc-status" class="pill"></span>
+            <span id="inc-state" class="pill subtle"></span>
+            <span class="muted small">ID <code id="inc-id"></code></span>
+            <span class="muted small">Services: <span id="inc-services"></span></span>
+            <span id="spinner" class="spinner" hidden aria-label="investigating"></span>
+          </div>
+          <p id="inc-summary" class="summary"></p>
+          <p id="inc-error" class="error small"></p>
+        </div>
+
+        <nav class="tabs" role="tablist">
+          <button type="button" role="tab" data-tab="timeline">Timeline</button>
+          <button type="button" role="tab" data-tab="hypotheses">Hypotheses</button>
+          <button type="button" role="tab" data-tab="remediation">Remediation <span id="pending-count" class="count" hidden></span></button>
+          <button type="button" role="tab" data-tab="postmortem">Postmortem</button>
+        </nav>
+
+        <section class="card tab-panel" data-panel="timeline">
+          <ol id="timeline" class="timeline"></ol>
+        </section>
+        <section class="card tab-panel" data-panel="hypotheses">
+          <div id="hypotheses" class="hypotheses"></div>
+        </section>
+        <section class="card tab-panel" data-panel="remediation">
+          <div class="approver-row">
+            <label for="approver">Approver name</label>
+            <input id="approver" maxlength="80" placeholder="e.g. Priya (on-call)">
+          </div>
+          <p class="muted small">Approving runs the runbook immediately against the simulated
+            environment. Every decision is recorded in the timeline.</p>
+          <div id="proposals"></div>
+          <p id="decision-error" class="error small" role="alert"></p>
+        </section>
+        <section class="card tab-panel" data-panel="postmortem">
+          <div class="card-head">
+            <span class="muted small">Blameless postmortem draft (Markdown)</span>
+            <button id="copy-md" type="button" class="ghost small">Copy Markdown</button>
+          </div>
+          <article id="postmortem" class="markdown"></article>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
