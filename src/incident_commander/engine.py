@@ -61,6 +61,7 @@ def run_scenario(
     max_steps: int = 20,
     on_step: Callable[[Step], None] | None = None,
     on_progress: Callable[[Incident], None] | None = None,
+    incident_id: str | None = None,
 ) -> IncidentRun:
     """Replay ``scenario`` end to end.
 
@@ -73,6 +74,8 @@ def run_scenario(
     incident = Incident(
         title=scenario.title, opened_at=correlation.window_start or signals[0].timestamp
     )
+    if incident_id is not None:
+        incident.id = incident_id
     for signal in related:
         incident.add_signal(signal)
     clock = SimClock(max(scenario.environment.now, signals[-1].timestamp))

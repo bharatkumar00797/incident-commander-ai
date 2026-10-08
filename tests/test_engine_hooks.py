@@ -60,3 +60,8 @@ def test_env_bool_rejects_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("IC_TEST_FLAG", "maybe")
     with pytest.raises(ValueError):
         env_bool("IC_TEST_FLAG", False)
+
+
+def test_caller_can_choose_incident_id() -> None:
+    run = run_scenario(load_scenario("bad-deploy"), MockProvider(), incident_id="inc-fixed01")
+    assert run.incident.id == "inc-fixed01"
