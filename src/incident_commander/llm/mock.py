@@ -47,9 +47,10 @@ def playbook(hypothesis: dict[str, Any]) -> list[Check]:
             ("get_metric", {"service": service, "name": "error_rate"}),
         ]
     if cause == "resource_exhaustion":
+        metric = str(details.get("metric") or "db_connections")
         return [
-            ("get_metric", {"service": service, "name": "db_connections"}),
-            ("query_logs", {"service": service, "pattern": "connection|pool|memory"}),
+            ("get_metric", {"service": service, "name": metric}),
+            ("query_logs", {"service": service, "pattern": "connection|pool|memory|oom"}),
         ]
     if cause == "dependency_failure":
         callers = [c for c in str(details.get("callers", "")).split(",") if c]
@@ -101,6 +102,8 @@ def _describe(tool: str, data: dict[str, Any] | None) -> str:
         return f"{data['matches']} log line(s) matching '{data['pattern']}'"
     if tool == "check_dependency":
         return "; ".join(f"{k} {v.get('status')}" for k, v in data["dependencies"].items())
+    if tool == "describe_service" and data.get("replicas"):
+        return f"{data['service']} runs {data['replicas']} replicas"
     return f"{tool} ok"
 
 
@@ -116,6 +119,8 @@ def _remediation(hypothesis: dict[str, Any], turns: list[_Turn]) -> Check | None
         if target:
             return ("rollback_deploy", {"service": service, "to_version": target})
         return None
+    if cause == "config_change":
+        return _revert_flag(turns)
     if cause == "resource_exhaustion":
         return ("restart_service", {"service": service})
     if cause == "dependency_failure":
@@ -127,6 +132,24 @@ def _remediation(hypothesis: dict[str, Any], turns: list[_Turn]) -> Check | None
                     "scale_out",
                     {"service": service, "replicas": int(turn.data["replicas"]) * 2},
                 )
+    return None
+
+
+def _revert_flag(turns: list[_Turn]) -> Check | None:
+    """Undo the most recent boolean (feature-flag) change made in the hour before impact."""
+    for turn in turns:
+        if turn.tool != "get_config_diff" or not turn.data:
+            continue
+        recent = [
+            c
+            for c in turn.data["changes"]
+            if 0 <= float(c.get("minutes_before_incident", -1)) <= 60
+            and {str(c.get("old")).lower(), str(c.get("new")).lower()} == {"true", "false"}
+        ]
+        if recent:
+            change = min(recent, key=lambda c: float(c["minutes_before_incident"]))
+            enabled = str(change["old"]).lower() == "true"
+            return ("toggle_feature_flag", {"flag": change["key"], "enabled": enabled})
     return None
 
 
