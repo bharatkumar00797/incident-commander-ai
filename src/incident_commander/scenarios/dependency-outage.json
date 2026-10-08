@@ -1,0 +1,198 @@
+{
+  "name": "dependency-outage",
+  "title": "Logins and orders failing: identity provider outage",
+  "description": "The third-party identity provider starts timing out. Several services that validate tokens fail at once; a config change minutes earlier is a distraction.",
+  "topology": {
+    "services": {
+      "web-frontend": {
+        "depends_on": [
+          "orders-api",
+          "profile-api"
+        ],
+        "customer_facing": true,
+        "owner": "team-web",
+        "description": "Customer-facing storefront"
+      },
+      "orders-api": {
+        "depends_on": [
+          "auth-provider"
+        ],
+        "owner": "team-orders",
+        "description": "Order placement"
+      },
+      "profile-api": {
+        "depends_on": [
+          "auth-provider"
+        ],
+        "owner": "team-identity",
+        "description": "Customer profiles"
+      },
+      "notifications-api": {
+        "depends_on": [
+          "auth-provider"
+        ],
+        "owner": "team-comms",
+        "description": "Email and push notifications"
+      },
+      "auth-provider": {
+        "owner": "vendor-idp",
+        "description": "External OAuth identity provider (primary region)"
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "config",
+      "service": "orders-api",
+      "key": "orders.batch_size",
+      "old": "50",
+      "new": "100",
+      "timestamp": "2026-10-08T18:57:00Z",
+      "by": "k.mehta"
+    },
+    {
+      "type": "log",
+      "line": "2026-10-08T19:01:05Z ERROR orders-api: timeout calling auth-provider /oauth/introspect after 3000ms"
+    },
+    {
+      "type": "log",
+      "line": "2026-10-08T19:01:20Z ERROR profile-api: token validation failed: auth-provider unavailable (timeout)"
+    },
+    {
+      "type": "log",
+      "line": "2026-10-08T19:01:40Z ERROR notifications-api: timeout calling auth-provider /oauth/token after 3000ms"
+    },
+    {
+      "version": "4",
+      "status": "firing",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "OrdersHigh5xxRate",
+            "service": "orders-api",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "5xx ratio 31% over 5m"
+          },
+          "startsAt": "2026-10-08T19:02:00Z"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "IdPProbeFailing",
+            "service": "auth-provider",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "blackbox probe to auth-provider failing from 3 regions"
+          },
+          "startsAt": "2026-10-08T19:02:30Z"
+        }
+      ]
+    },
+    {
+      "type": "metric",
+      "service": "orders-api",
+      "name": "error_rate",
+      "value": 0.31,
+      "baseline": 0.003,
+      "unit": "ratio",
+      "timestamp": "2026-10-08T19:03:00Z"
+    },
+    {
+      "event_action": "trigger",
+      "payload": {
+        "summary": "Login failures elevated on storefront",
+        "source": "slo-monitor",
+        "component": "web-frontend",
+        "severity": "critical",
+        "timestamp": "2026-10-08T19:03:30Z"
+      }
+    }
+  ],
+  "environment": {
+    "now": "2026-10-08T19:20:00Z",
+    "logs": {
+      "orders-api": [
+        "2026-10-08T18:57:10Z INFO orders-api: config reloaded: orders.batch_size=100",
+        "2026-10-08T19:01:05Z ERROR orders-api: timeout calling auth-provider /oauth/introspect after 3000ms",
+        "2026-10-08T19:05:00Z ERROR orders-api: timeout calling auth-provider /oauth/introspect after 3000ms"
+      ],
+      "profile-api": [
+        "2026-10-08T19:01:20Z ERROR profile-api: token validation failed: auth-provider unavailable (timeout)"
+      ],
+      "notifications-api": [
+        "2026-10-08T19:01:40Z ERROR notifications-api: timeout calling auth-provider /oauth/token after 3000ms"
+      ]
+    },
+    "metrics": {
+      "orders-api": {
+        "error_rate": {
+          "unit": "ratio",
+          "baseline": 0.003,
+          "start": "2026-10-08T18:40:00Z",
+          "interval_minutes": 5,
+          "points": [
+            0.003,
+            0.003,
+            0.004,
+            0.003,
+            0.29,
+            0.31,
+            0.3,
+            0.31,
+            0.32
+          ]
+        }
+      }
+    },
+    "config_changes": {
+      "orders-api": [
+        {
+          "key": "orders.batch_size",
+          "old": "50",
+          "new": "100",
+          "at": "2026-10-08T18:57:00Z",
+          "by": "k.mehta"
+        }
+      ]
+    },
+    "dependencies": {
+      "orders-api": {
+        "auth-provider": {
+          "status": "down",
+          "latency_ms": 3000,
+          "error_rate": 0.97,
+          "note": "all requests timing out"
+        }
+      },
+      "profile-api": {
+        "auth-provider": {
+          "status": "down",
+          "latency_ms": 3000,
+          "error_rate": 0.95
+        }
+      },
+      "notifications-api": {
+        "auth-provider": {
+          "status": "down",
+          "latency_ms": 3000,
+          "error_rate": 0.96
+        }
+      }
+    },
+    "feature_flags": {
+      "web-frontend.guest_checkout": false
+    },
+    "failover_targets": {
+      "auth-provider": "auth-provider-secondary-region"
+    }
+  },
+  "expected": {
+    "cause": "dependency_failure",
+    "service": "auth-provider",
+    "runbook_id": "failover_dependency"
+  }
+}
