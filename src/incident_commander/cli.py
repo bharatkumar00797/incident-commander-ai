@@ -125,7 +125,9 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         "public-demo": "public demo (packaged scenarios + mock provider, simulated runbooks)",
     }[settings.access_mode]
     sync = " | sync investigations" if settings.sync_runs else ""
-    print(f"Incident Commander {__version__} on http://{args.host}:{port} | {mode}{sync}")
+    print(
+        f"Incident Commander {__version__} on http://{args.host}:{port} | {mode}{sync}", flush=True
+    )
     uvicorn.run(create_app(settings), host=args.host, port=port, log_level="info")
     return 0
 
