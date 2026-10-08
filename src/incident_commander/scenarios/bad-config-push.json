@@ -1,0 +1,203 @@
+{
+  "name": "bad-config-push",
+  "title": "Checkout totals failing: bad feature-flag push in pricing",
+  "description": "Turning on the dynamic_discounts_v2 flag in pricing-api makes price calculation fail for most carts. A tax-service deploy a few minutes earlier is a red herring; the fix is to switch the flag back off, not to roll anything back.",
+  "topology": {
+    "services": {
+      "web-frontend": {
+        "depends_on": [
+          "pricing-api"
+        ],
+        "customer_facing": true,
+        "owner": "team-web",
+        "description": "Web checkout"
+      },
+      "pricing-api": {
+        "depends_on": [
+          "tax-service",
+          "pricing-db"
+        ],
+        "owner": "team-pricing",
+        "description": "Cart pricing, discounts and totals"
+      },
+      "tax-service": {
+        "owner": "team-finance",
+        "description": "Sales tax calculation"
+      },
+      "pricing-db": {
+        "owner": "team-dba",
+        "description": "Price list database"
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "deploy",
+      "service": "tax-service",
+      "version": "v1.9.3",
+      "previous_version": "v1.9.2",
+      "timestamp": "2026-10-08T10:02:00Z",
+      "by": "ci-pipeline",
+      "summary": "Update VAT rate table"
+    },
+    {
+      "type": "config",
+      "service": "pricing-api",
+      "key": "pricing-api.dynamic_discounts_v2",
+      "old": "false",
+      "new": "true",
+      "timestamp": "2026-10-08T10:06:00Z",
+      "by": "ops-console"
+    },
+    {
+      "type": "log",
+      "line": "2026-10-08T10:08:00Z ERROR pricing-api: DiscountRuleError: rule set v2 produced a negative total for cart c-88213, request failed"
+    },
+    {
+      "version": "4",
+      "status": "firing",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "PricingErrorRate",
+            "service": "pricing-api",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "5xx ratio 14% on pricing-api"
+          },
+          "startsAt": "2026-10-08T10:09:00Z"
+        }
+      ]
+    },
+    {
+      "type": "metric",
+      "service": "pricing-api",
+      "name": "error_rate",
+      "value": 0.14,
+      "baseline": 0.005,
+      "unit": "ratio",
+      "timestamp": "2026-10-08T10:10:00Z"
+    },
+    {
+      "event_action": "trigger",
+      "payload": {
+        "summary": "Checkout totals failing for customers on web",
+        "source": "slo-monitor",
+        "component": "web-frontend",
+        "severity": "critical",
+        "timestamp": "2026-10-08T10:11:00Z"
+      }
+    }
+  ],
+  "environment": {
+    "now": "2026-10-08T10:25:00Z",
+    "logs": {
+      "pricing-api": [
+        "2026-10-08T10:06:05Z INFO pricing-api: feature flag pricing-api.dynamic_discounts_v2 enabled",
+        "2026-10-08T10:08:00Z ERROR pricing-api: DiscountRuleError: rule set v2 produced a negative total for cart c-88213, request failed",
+        "2026-10-08T10:12:40Z ERROR pricing-api: DiscountRuleError: rule set v2 produced a negative total for cart c-90155, request failed"
+      ],
+      "tax-service": [
+        "2026-10-08T10:02:40Z INFO tax-service: started version v1.9.3",
+        "2026-10-08T10:03:00Z INFO tax-service: loaded VAT rate table 2026-10 (212 regions)"
+      ]
+    },
+    "metrics": {
+      "pricing-api": {
+        "error_rate": {
+          "unit": "ratio",
+          "baseline": 0.005,
+          "start": "2026-10-08T09:25:00Z",
+          "interval_minutes": 5,
+          "points": [
+            0.005,
+            0.004,
+            0.005,
+            0.006,
+            0.005,
+            0.005,
+            0.005,
+            0.005,
+            0.12,
+            0.14,
+            0.15,
+            0.14,
+            0.14
+          ]
+        }
+      },
+      "tax-service": {
+        "error_rate": {
+          "unit": "ratio",
+          "baseline": 0.002,
+          "start": "2026-10-08T09:25:00Z",
+          "interval_minutes": 5,
+          "points": [
+            0.002,
+            0.002,
+            0.003,
+            0.002,
+            0.002,
+            0.002,
+            0.002,
+            0.003,
+            0.002,
+            0.002,
+            0.003,
+            0.002,
+            0.002
+          ]
+        }
+      }
+    },
+    "deploys": {
+      "tax-service": [
+        {
+          "version": "v1.9.2",
+          "at": "2026-09-30T09:00:00Z",
+          "by": "ci-pipeline",
+          "summary": "Rounding fix for JPY"
+        },
+        {
+          "version": "v1.9.3",
+          "previous_version": "v1.9.2",
+          "at": "2026-10-08T10:02:00Z",
+          "by": "ci-pipeline",
+          "summary": "Update VAT rate table"
+        }
+      ]
+    },
+    "config_changes": {
+      "pricing-api": [
+        {
+          "key": "pricing-api.cache_ttl_seconds",
+          "old": "300",
+          "new": "600",
+          "at": "2026-10-07T16:00:00Z",
+          "by": "ops-console"
+        },
+        {
+          "key": "pricing-api.dynamic_discounts_v2",
+          "old": "false",
+          "new": "true",
+          "at": "2026-10-08T10:06:00Z",
+          "by": "ops-console"
+        }
+      ]
+    },
+    "feature_flags": {
+      "pricing-api.dynamic_discounts_v2": true,
+      "pricing-api.gift_wrap_upsell": false
+    },
+    "replicas": {
+      "pricing-api": 4
+    }
+  },
+  "expected": {
+    "cause": "config_change",
+    "service": "pricing-api",
+    "runbook_id": "toggle_feature_flag"
+  }
+}
