@@ -1,0 +1,191 @@
+{
+  "name": "traffic-spike",
+  "title": "Ticket on-sale overloads ticketing-api",
+  "description": "A concert on-sale sends 8x normal traffic to ticketing-api; CPU saturates and latency climbs for buyers. A copy-only deploy ten minutes earlier is a red herring; the fix is more capacity.",
+  "topology": {
+    "services": {
+      "api-gateway": {
+        "depends_on": [
+          "ticketing-api"
+        ],
+        "customer_facing": true,
+        "owner": "team-platform",
+        "description": "Public API gateway"
+      },
+      "ticketing-api": {
+        "depends_on": [
+          "inventory-db"
+        ],
+        "owner": "team-ticketing",
+        "description": "Seat holds and ticket purchases"
+      },
+      "inventory-db": {
+        "owner": "team-dba",
+        "description": "Seat inventory database"
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "deploy",
+      "service": "ticketing-api",
+      "version": "v3.4.1",
+      "previous_version": "v3.4.0",
+      "timestamp": "2026-10-08T18:50:00Z",
+      "by": "ci-pipeline",
+      "summary": "Copy change on confirmation page"
+    },
+    {
+      "type": "metric",
+      "service": "ticketing-api",
+      "name": "request_rate",
+      "value": 4800,
+      "baseline": 600,
+      "unit": "rps",
+      "timestamp": "2026-10-08T19:00:00Z"
+    },
+    {
+      "version": "4",
+      "status": "firing",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "TicketingLatencyHigh",
+            "service": "ticketing-api",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "p99 latency 3.2s (baseline 250ms)"
+          },
+          "startsAt": "2026-10-08T19:01:00Z"
+        }
+      ]
+    },
+    {
+      "type": "metric",
+      "service": "ticketing-api",
+      "name": "cpu_utilization",
+      "value": 0.97,
+      "baseline": 0.35,
+      "threshold": 0.9,
+      "unit": "ratio",
+      "timestamp": "2026-10-08T19:02:00Z"
+    },
+    {
+      "event_action": "trigger",
+      "payload": {
+        "summary": "Ticket purchase page slow for customers (p95 page load 9s)",
+        "source": "slo-monitor",
+        "component": "api-gateway",
+        "severity": "error",
+        "timestamp": "2026-10-08T19:03:00Z"
+      }
+    }
+  ],
+  "environment": {
+    "now": "2026-10-08T19:15:00Z",
+    "logs": {
+      "ticketing-api": [
+        "2026-10-08T18:50:40Z INFO ticketing-api: started version v3.4.1",
+        "2026-10-08T19:00:00Z INFO ticketing-api: on-sale opened for event e-5521 (42000 seats)",
+        "2026-10-08T19:01:30Z WARN ticketing-api: worker queue depth 1800 (target < 100), shedding non-critical requests",
+        "2026-10-08T19:06:00Z WARN ticketing-api: worker queue depth 2400 (target < 100), shedding non-critical requests"
+      ]
+    },
+    "metrics": {
+      "ticketing-api": {
+        "request_rate": {
+          "unit": "rps",
+          "baseline": 600,
+          "start": "2026-10-08T18:15:00Z",
+          "interval_minutes": 5,
+          "points": [
+            580,
+            610,
+            600,
+            620,
+            590,
+            600,
+            640,
+            610,
+            650,
+            4800,
+            5100,
+            5300,
+            5200
+          ]
+        },
+        "error_rate": {
+          "unit": "ratio",
+          "baseline": 0.004,
+          "start": "2026-10-08T18:15:00Z",
+          "interval_minutes": 5,
+          "points": [
+            0.004,
+            0.004,
+            0.005,
+            0.004,
+            0.004,
+            0.004,
+            0.004,
+            0.005,
+            0.004,
+            0.006,
+            0.007,
+            0.007,
+            0.006
+          ]
+        },
+        "cpu_utilization": {
+          "unit": "ratio",
+          "baseline": 0.35,
+          "start": "2026-10-08T18:15:00Z",
+          "interval_minutes": 5,
+          "points": [
+            0.34,
+            0.35,
+            0.36,
+            0.35,
+            0.34,
+            0.35,
+            0.37,
+            0.36,
+            0.36,
+            0.95,
+            0.97,
+            0.98,
+            0.97
+          ],
+          "limit": 1.0
+        }
+      }
+    },
+    "deploys": {
+      "ticketing-api": [
+        {
+          "version": "v3.4.0",
+          "at": "2026-10-06T12:00:00Z",
+          "by": "ci-pipeline",
+          "summary": "Seat map caching"
+        },
+        {
+          "version": "v3.4.1",
+          "previous_version": "v3.4.0",
+          "at": "2026-10-08T18:50:00Z",
+          "by": "ci-pipeline",
+          "summary": "Copy change on confirmation page"
+        }
+      ]
+    },
+    "replicas": {
+      "ticketing-api": 4,
+      "api-gateway": 6
+    }
+  },
+  "expected": {
+    "cause": "traffic_spike",
+    "service": "ticketing-api",
+    "runbook_id": "scale_out"
+  }
+}
