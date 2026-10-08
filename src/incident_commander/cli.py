@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
@@ -38,6 +39,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--quiet", action="store_true", help="only print the final summary")
 
     sub.add_parser("scenarios", help="list bundled scenarios")
+
+    serve = sub.add_parser("serve", help="start the REST API and web dashboard")
+    serve.add_argument(
+        "--host",
+        default=os.getenv("HOST", "127.0.0.1"),
+        help="bind address (default: $HOST or 127.0.0.1)",
+    )
+    serve.add_argument("--port", type=int, default=None, help="port (default: $PORT or 8000)")
+    serve.add_argument("--dev", action="store_true", help="dev mode: no API key required")
     return parser
 
 
@@ -94,11 +104,39 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0 if run.investigation.status == "concluded" else 1
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from incident_commander.api import ApiSettings, create_app
+
+    try:
+        port = args.port or int(os.getenv("PORT") or 8000)
+        settings = ApiSettings.from_env()
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.dev:
+        settings = replace(settings, dev_mode=True)
+    if settings.access_mode == "dev" and args.host not in {"127.0.0.1", "::1", "localhost"}:
+        print("warning: dev mode without API keys is exposed beyond localhost", file=sys.stderr)
+    mode = {
+        "api-key": "API-key auth (responder/approver roles)",
+        "dev": "dev mode (no auth)",
+        "public-demo": "public demo (packaged scenarios + mock provider, simulated runbooks)",
+    }[settings.access_mode]
+    sync = " | sync investigations" if settings.sync_runs else ""
+    print(f"Incident Commander {__version__} on http://{args.host}:{port} | {mode}{sync}")
+    uvicorn.run(create_app(settings), host=args.host, port=port, log_level="info")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "run":
         return _cmd_run(args)
+    if args.command == "serve":
+        return _cmd_serve(args)
     if args.command == "scenarios":
         for name in list_scenarios():
             print(f"{name:28} {load_scenario(name).title}")
