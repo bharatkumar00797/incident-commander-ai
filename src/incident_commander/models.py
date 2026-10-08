@@ -122,6 +122,7 @@ class Hypothesis(Strict):
     id: str = Field(default_factory=lambda: new_id("hyp"))
     statement: str = Field(min_length=1, max_length=MAX_TEXT)
     suspected_cause: str = Field(min_length=1, max_length=100)
+    service: str | None = Field(default=None, max_length=100)
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     evidence_for: list[str] = Field(default_factory=list)
     evidence_against: list[str] = Field(default_factory=list)
@@ -150,8 +151,10 @@ class RemediationProposal(Strict):
     params: dict[str, str | int | float | bool] = Field(default_factory=dict)
     rationale: str = Field(min_length=1, max_length=MAX_TEXT)
     risk: Risk = Risk.MEDIUM
+    hypothesis_id: str | None = Field(default=None, max_length=100)
     status: ProposalStatus = ProposalStatus.PROPOSED
     decided_by: str | None = None
+    result: str | None = Field(default=None, max_length=MAX_TEXT)
 
 
 class Incident(Strict):
@@ -164,11 +167,22 @@ class Incident(Strict):
     timeline: list[TimelineEntry] = Field(default_factory=list)
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     proposals: list[RemediationProposal] = Field(default_factory=list)
+    root_cause_id: str | None = None
+    summary: str | None = Field(default=None, max_length=MAX_TEXT)
     opened_at: datetime = Field(default_factory=utcnow)
     resolved_at: datetime | None = None
 
-    def record(self, actor: Actor, kind: EntryKind, text: str, *refs: str) -> TimelineEntry:
-        entry = TimelineEntry(actor=actor, kind=kind, text=text, refs=list(refs))
+    def record(
+        self,
+        actor: Actor,
+        kind: EntryKind,
+        text: str,
+        *refs: str,
+        ts: datetime | None = None,
+    ) -> TimelineEntry:
+        entry = TimelineEntry(
+            ts=ts or utcnow(), actor=actor, kind=kind, text=text[:MAX_TEXT], refs=list(refs)
+        )
         self.timeline.append(entry)
         return entry
 
@@ -176,4 +190,16 @@ class Incident(Strict):
         self.signals.append(signal)
         if signal.service not in self.services:
             self.services.append(signal.service)
-        self.record(Actor.SYSTEM, EntryKind.SIGNAL, f"[{signal.kind}] {signal.summary}", signal.id)
+        self.record(
+            Actor.SYSTEM,
+            EntryKind.SIGNAL,
+            f"[{signal.kind}] {signal.service}: {signal.summary}",
+            signal.id,
+            ts=signal.timestamp,
+        )
+
+    def hypothesis(self, hypothesis_id: str) -> Hypothesis | None:
+        return next((h for h in self.hypotheses if h.id == hypothesis_id), None)
+
+    def proposal(self, proposal_id: str) -> RemediationProposal | None:
+        return next((p for p in self.proposals if p.id == proposal_id), None)
