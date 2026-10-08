@@ -12,7 +12,14 @@ SCENARIOS = list_scenarios()
 
 
 def test_bundled_scenarios() -> None:
-    assert {"bad-deploy", "db-connection-exhaustion", "dependency-outage"} <= set(SCENARIOS)
+    assert {
+        "bad-deploy",
+        "bad-config-push",
+        "db-connection-exhaustion",
+        "dependency-outage",
+        "memory-leak",
+        "traffic-spike",
+    } <= set(SCENARIOS)
     with pytest.raises(KeyError):
         load_scenario("nope")
     with pytest.raises(ValueError):
@@ -61,3 +68,46 @@ def test_postmortem_is_complete_and_escapes_tables() -> None:
     assert "Blameless" in text and "rollback_deploy" in text and "by bharat" in text
     assert "canary" in text and "checkout-api" in text
     assert "exception\\|panic" in text  # pipes in evidence cannot break the table
+
+
+RED_HERRINGS = {
+    "memory-leak": ("config_change", "resource_exhaustion"),
+    "bad-config-push": ("bad_deploy", "config_change"),
+    "traffic-spike": ("bad_deploy", "traffic_spike"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(RED_HERRINGS))
+def test_recent_change_red_herring_is_refuted(name: str) -> None:
+    herring, real = RED_HERRINGS[name]
+    run = run_scenario(load_scenario(name), MockProvider())
+    h1, h2 = run.incident.hypotheses[:2]
+    assert (h1.suspected_cause, h1.status) == (herring, HypothesisStatus.REFUTED)
+    assert (h2.suspected_cause, h2.status) == (real, HypothesisStatus.SUPPORTED)
+    assert run.incident.root_cause_id == h2.id
+
+
+def test_memory_leak_checks_memory_not_connections() -> None:
+    run = run_scenario(load_scenario("memory-leak"), MockProvider())
+    metrics = [s.args.get("name") for s in run.investigation.steps if s.tool == "get_metric"]
+    assert "memory_usage" in metrics and "db_connections" not in metrics
+    (proposal,) = run.incident.proposals
+    assert proposal.params == {"service": "search-api"}
+
+
+def test_bad_config_push_switches_the_flag_back_off() -> None:
+    run = run_scenario(load_scenario("bad-config-push"), MockProvider())
+    (proposal,) = run.incident.proposals
+    assert proposal.runbook_id == "toggle_feature_flag"
+    assert proposal.params == {"flag": "pricing-api.dynamic_discounts_v2", "enabled": False}
+    approve_and_execute(run, "on-call")
+    assert run.env.feature_flags["pricing-api.dynamic_discounts_v2"] is False
+    assert run.incident.status is IncidentStatus.RESOLVED
+
+
+def test_traffic_spike_doubles_capacity() -> None:
+    run = run_scenario(load_scenario("traffic-spike"), MockProvider())
+    (proposal,) = run.incident.proposals
+    assert proposal.params == {"service": "ticketing-api", "replicas": 8}
+    approve_and_execute(run, "on-call")
+    assert run.env.replicas["ticketing-api"] == 8
