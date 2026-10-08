@@ -60,7 +60,13 @@ def run_scenario(
     *,
     max_steps: int = 20,
     on_step: Callable[[Step], None] | None = None,
+    on_progress: Callable[[Incident], None] | None = None,
 ) -> IncidentRun:
+    """Replay ``scenario`` end to end.
+
+    ``on_progress`` is called with the live incident once triage and correlation are done and
+    again after every investigation step, so callers (the HTTP service) can publish snapshots.
+    """
     signals = ingest_batch(scenario.events)
     correlation = correlate(signals, scenario.topology)
     related = [s for s in signals if s.id in set(correlation.signal_ids)]
@@ -88,11 +94,19 @@ def run_scenario(
         ts=clock(),
     )
     seed_hypotheses(incident, correlation, clock())
+    if on_progress is not None:
+        on_progress(incident)
+
+    def step_hook(step: Step) -> None:
+        if on_step is not None:
+            on_step(step)
+        if on_progress is not None:
+            on_progress(incident)
 
     env = SimulatedEnvironment(scenario)
     tools = build_diagnostic_registry(env, correlation.window_start)
     investigation = Investigator(
-        provider, tools, incident, env, max_steps=max_steps, clock=clock, on_step=on_step
+        provider, tools, incident, env, max_steps=max_steps, clock=clock, on_step=step_hook
     ).run(result, correlation)
     return IncidentRun(scenario, incident, env, result, correlation, investigation, clock)
 
