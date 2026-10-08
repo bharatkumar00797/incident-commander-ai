@@ -5,7 +5,8 @@
 
 **An AI agent that runs production incidents from the first alert to the postmortem.**
 
-> Status: engine, CLI, HTTP API and web dashboard are working end to end; deploy configs are in progress.
+> Status: engine, CLI, HTTP API, web dashboard and deploy configs (Docker, Render, Fly.io, Railway,
+> Vercel) are working end to end.
 
 ## What it does
 
@@ -34,8 +35,16 @@ incident-commander run --scenario bad-deploy --approve --approver "$USER"   # ap
 Each run prints the triage decision, every diagnostic step, the ranked hypotheses and the proposed
 runbook, and writes `incident-output/postmortem.md` and `incident-output/incident.json`.
 
-Bundled scenarios: `bad-deploy`, `db-connection-exhaustion` (with a red-herring deploy that has to be
-ruled out) and `dependency-outage` (third-party identity provider timing out across services).
+Bundled scenarios (each has a known answer that the tests and the container smoke test check):
+
+| Scenario | What happens | Red herring ruled out | Proposed runbook |
+| --- | --- | --- | --- |
+| `bad-deploy` | checkout-api v2.3.1 throws on every cart, 5xx spike | - (plus a prompt-injection log line) | `rollback_deploy` to v2.3.0 |
+| `db-connection-exhaustion` | leaked connections exhaust the payments Postgres pool | harmless deploy minutes earlier | `restart_service` payments-api |
+| `dependency-outage` | third-party identity provider times out across 3 services (SEV1) | - | `failover_dependency` auth-provider |
+| `memory-leak` | search-api memory grows for hours until pods are OOM-killed | log-level config change | `restart_service` search-api |
+| `bad-config-push` | enabling a discount feature flag breaks checkout totals | tax-service deploy | `toggle_feature_flag` back off |
+| `traffic-spike` | ticket on-sale sends 8x traffic, CPU saturates | copy-only deploy | `scale_out` ticketing-api 4 -> 8 |
 
 ### Using a real model
 
@@ -93,6 +102,25 @@ Investigations run in a bounded background worker pool (`POST` answers `202`, po
 with `IC_SYNC_RUNS=true` (automatic on Vercel / AWS Lambda) they finish inside the request
 (`200` with the full timeline). Rate limits, a 256 KB body cap, strict CSP and the other settings
 are listed in `.env.example`.
+
+## Deploy
+
+All container platforms build the same hardened, non-root image (`Dockerfile`) and probe
+`/healthz`; the server listens on `$PORT`. Without API keys every deployment is a public demo.
+
+- **Docker / Compose**: `docker compose up --build` (read-only filesystem, all capabilities
+  dropped, memory/pid limits). `python3 scripts/smoke_test.py http://127.0.0.1:8000` runs every
+  scenario end to end against it (CI does the same).
+- **Render**: `render.yaml` Blueprint (Docker, free plan, health check, trusted proxy).
+- **Fly.io**: `fly launch --copy-config --no-deploy && fly deploy` (`fly.toml`, port 8080).
+- **Railway**: `railway.json` (Dockerfile builder, health check, restart on failure).
+- **Vercel**: `api/index.py` serverless entry; `vercel.json` bundles the package (scenarios and
+  dashboard) and routes every path to it. Investigations run in sync mode because functions
+  cannot keep background threads. Incidents are kept in memory per instance, so an approval
+  can land on a fresh instance and return `404`; use a container platform for anything beyond a
+  demo.
+
+Lock a deployment down by setting `IC_API_KEYS` / `IC_APPROVER_KEYS` as platform secrets.
 
 ## Development
 
