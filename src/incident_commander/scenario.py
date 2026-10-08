@@ -10,8 +10,9 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
+from incident_commander.ingest import ingest_batch
 from incident_commander.models import Strict
-from incident_commander.topology import Topology
+from incident_commander.topology import ServiceInfo, Topology
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
@@ -104,3 +105,33 @@ def load_scenario(name: str) -> Scenario:
     if name not in files:
         raise KeyError(f"unknown scenario {name!r}; available: {', '.join(sorted(files))}")
     return Scenario.model_validate(json.loads(files[name].read_text(encoding="utf-8")))
+
+
+CUSTOM_SCENARIO = "custom"
+
+
+def custom_scenario(
+    events: list[Any], *, topology: Topology | None = None, title: str | None = None
+) -> Scenario:
+    """Wrap a raw signal batch in a scenario so it can go through the same pipeline.
+
+    There is no recorded telemetry behind ad-hoc signals, so the simulated environment is empty:
+    diagnostics only see what the signals themselves carry, and the expected answer is unknown.
+    Services that appear in the signals but not in ``topology`` are added without dependencies.
+    """
+    signals = ingest_batch(events)
+    if not signals:
+        raise ValueError("at least one signal is required")
+    services = dict((topology or Topology()).services)
+    for signal in signals:
+        services.setdefault(signal.service, ServiceInfo())
+    first = next((s for s in signals if s.kind != "deploy"), signals[0])
+    return Scenario(
+        name=CUSTOM_SCENARIO,
+        title=(title or f"Incident on {first.service}: {first.summary}")[:200],
+        description="Ad-hoc incident created from a raw signal batch.",
+        topology=Topology(services=services),
+        events=events,
+        environment=EnvironmentData(now=signals[-1].timestamp),
+        expected=Expected(cause="unknown", service="unknown", runbook_id="unknown"),
+    )
