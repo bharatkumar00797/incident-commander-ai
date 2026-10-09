@@ -22,6 +22,7 @@ def test_version_is_reported_by_api_and_cli() -> None:
     with TestClient(app) as client:
         assert client.get("/healthz").json()["version"] == incident_commander.__version__
         assert client.get("/api/config").json()["version"] == incident_commander.__version__
-        assert client.get("/openapi.json").json()["info"]["version"] == incident_commander.__version__
+        openapi_version = client.get("/openapi.json").json()["info"]["version"]
+        assert openapi_version == incident_commander.__version__
     version_action = next(a for a in build_parser()._actions if a.dest == "version")
     assert version_action.version == f"%(prog)s {incident_commander.__version__}"
