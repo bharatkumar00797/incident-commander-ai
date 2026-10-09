@@ -68,7 +68,7 @@ read-only by construction; remediations only ever touch a simulator in this proj
 
 ## Screenshots
 
-Dashboard deep links use `#incident=<id>&tab=<name>` (list, timeline, hypotheses, remediations,
+Dashboard deep links use `#incident=<id>&tab=<name>` (timeline, hypotheses, remediation,
 postmortem).
 
 | Incident list | Live timeline |
